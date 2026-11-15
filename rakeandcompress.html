@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>rake &amp; compress · step-by-step trace + final layers</title>
+<style>
+  * { box-sizing: border-box; font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  body { background: #f5f7fb; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 24px; }
+  .app-container { display: flex; flex-wrap: wrap; gap: 24px; max-width: 1500px; width: 100%; background: white; padding: 24px; border-radius: 32px; box-shadow: 0 20px 40px rgba(0,10,30,0.12); }
+  .canvas-area { flex: 2 1 700px; background: #ffffff; border-radius: 24px; padding: 8px; position: relative; border: 1px solid #e2e8f0; box-shadow: inset 0 2px 6px rgba(0,0,0,0.02); }
+  svg { width: 100%; height: auto; display: block; background: #fdfdfe; border-radius: 20px; }
+  .info-panel { flex: 1 1 340px; display: flex; flex-direction: column; gap: 18px; }
+  .status-card { background: #f8fafd; border-radius: 20px; padding: 20px; border: 1px solid #dee6f0; }
+  .status-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .status-label { font-size: 0.85rem; font-weight: 500; color: #4a5b74; letter-spacing: 0.3px; text-transform: uppercase; }
+  .status-value { font-size: 1.6rem; font-weight: 700; color: #0b1c33; line-height: 1.2; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+  .step-badge { display: inline-block; padding: 6px 14px; border-radius: 40px; font-weight: 600; font-size: 0.85rem; background: #dbeafe; color: #1e4a8b; }
+  .step-badge.rake { background: #fff3e0; color: #a65d00; }
+  .step-badge.compress { background: #e0f2fe; color: #0369a1; }
+  .step-badge.done { background: #e2e8f0; color: #475569; }
+  .layer-list { background: #ffffff; border-radius: 16px; padding: 12px 0; border: 1px solid #e9edf4; max-height: 220px; overflow-y: auto; font-size: 0.78rem; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+  .layer-entry { padding: 5px 16px; display: flex; justify-content: space-between; border-bottom: 1px solid #f0f3f9; }
+  .layer-entry:last-child { border-bottom: none; }
+  .layer-name { font-weight: 600; }
+  .layer-nodes { color: #3a4d66; word-break: break-word; max-width: 190px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 8px; }
+  button { background: #1e2b3c; border: none; color: white; font-weight: 600; padding: 11px 20px; border-radius: 40px; cursor: pointer; font-size: 0.85rem; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+  button:hover:not(:disabled) { background: #0b1c33; transform: scale(1.02); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.secondary { background: #eef2f8; color: #1e2b3c; border: 1px solid #cdd9e9; }
+  button.secondary:hover:not(:disabled) { background: #e2e9f3; }
+  button.pause { background: #f59e0b; }
+  button.pause:hover:not(:disabled) { background: #d97706; }
+  .speed-control { display: flex; align-items: center; gap: 10px; background: #f0f4fa; padding: 6px 14px; border-radius: 40px; font-size: 0.82rem; font-weight: 500; color: #2b3e58; }
+  input[type=range] { width: 130px; accent-color: #1e2b3c; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.7rem; color: #4a5b74; margin-top: 6px; }
+  .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 4px; margin-right: 4px; }
+  .node-label { font-size: 10px; font-weight: 600; fill: #1e2b3c; pointer-events: none; user-select: none; font-family: 'JetBrains Mono', monospace; }
+  .ptr-label { font-size: 11px; font-weight: 700; pointer-events: none; user-select: none; font-family: 'JetBrains Mono', monospace; }
+  .trace-line { font-size: 0.72rem; font-family: 'JetBrains Mono', monospace; color: #334155; background: #f8fafc; border-radius: 8px; padding: 8px 12px; margin-top: 4px; border: 1px solid #e2e8f0; line-height: 1.5; min-height: 40px; }
+  .trace-line .var-s { color: #b91c1c; font-weight: 700; }
+  .trace-line .var-q { color: #6d28d9; font-weight: 700; }
+  .final-banner { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 10px 14px; font-size: 0.8rem; color: #065f46; font-weight: 600; text-align: center; }
+</style>
+</head>
+<body>
+<div class="app-container">
+  <div class="canvas-area">
+    <svg id="treeSvg" viewBox="0 0 1000 720" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+  <div class="info-panel">
+    <div class="status-card">
+      <div class="status-row"><span class="status-label">current step</span><span id="stepBadge" class="step-badge">—</span></div>
+      <div class="status-row"><span class="status-label">round</span><span id="roundDisplay" class="status-value">0</span></div>
+      <div class="status-row"><span class="status-label">phase / γ</span><span id="phaseDisplay" class="status-value" style="font-size:1.05rem;">–</span></div>
+    </div>
+    <div id="finalBanner" class="final-banner" style="display:none;">🎉 decomposition complete — showing layer colors</div>
+    <div style="font-weight:600; font-size:0.88rem; color:#1e2b3c; margin-bottom:6px;">📦 decomposition layers</div>
+    <div id="layerList" class="layer-list">
+      <div class="layer-entry" style="color:#8a9bb0; justify-content:center;">no layers yet</div>
+    </div>
+    <div id="traceBox" class="trace-line">compress trace will appear here…</div>
+    <div class="controls">
+      <button id="playBtn">▶ play</button>
+      <button id="pauseBtn" class="pause">⏸ pause</button>
+      <button id="resetBtn" class="secondary">↺ reset</button>
+      <div class="speed-control">
+        <span>⏱</span>
+        <input type="range" id="speedSlider" min="1" max="30" value="8">
+        <span id="speedValue">8x</span>
+      </div>
+    </div>
+    <div class="legend" id="legendBox">
+      <span><span class="legend-dot" style="background:#eef6ff;border:2px solid #3b82f6;"></span> active</span>
+      <span><span class="legend-dot" style="background:#fbbf24;"></span> raked</span>
+      <span><span class="legend-dot" style="background:#38bdf8;"></span> compressed</span>
+      <span><span class="legend-dot" style="background:#fca5a5;border:2px solid #b91c1c;"></span> s</span>
+      <span><span class="legend-dot" style="background:#c4b5fd;border:2px solid #6d28d9;"></span> q</span>
+      <span><span class="legend-dot" style="background:#a5f3fc;border:2px solid #0284c7;"></span> in (s,q)</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// GLOBAL STATE — declared FIRST, before any function runs
+// ============================================================
+let currentForest = new Set();
+let layerAssignments = [];
+let steps = [];
+let stepIndex = 0;
+let playing = false;
+let speed = 8;
+let timer = null;
+let nodes = [];
+let edges = [];
+let adj = {};
+let nodeMap = {};
+
+const GAMMA = 2;
+const ELL = 2;
+
+// Layer color palette — assigned in order of layer creation
+const LAYER_PALETTE = [
+  '#ef4444', // red
+  '#f97316', // orange
+  '#eab308', // yellow
+  '#84cc16', // lime
+  '#22c55e', // green
+  '#14b8a6', // teal
+  '#06b6d4', // cyan
+  '#3b82f6', // blue
+  '#6366f1', // indigo
+  '#8b5cf6', // violet
+  '#a855f7', // purple
+  '#d946ef', // fuchsia
+  '#ec4899', // pink
+  '#f43f5e', // rose
+  '#78716c', // stone
+  '#0ea5e9', // sky
+  '#10b981', // emerald
+  '#f59e0b', // amber
+];
+
+// ============================================================
+// BUILD TREE
+// ============================================================
+function buildTree() {
+  nodes = [
+    { id: 'v1',  x: 60,  y: 360 },
+    { id: 'v2',  x: 140, y: 360 },
+    { id: 'v3',  x: 220, y: 360 },
+    { id: 'v4',  x: 300, y: 360 },
+    { id: 'v5',  x: 380, y: 360 },
+    { id: 'v6',  x: 460, y: 360 },
+    { id: 'v7',  x: 540, y: 360 },
+    { id: 'v8',  x: 620, y: 360 },
+    { id: 'v9',  x: 700, y: 360 },
+    { id: 'v10', x: 780, y: 360 },
+    { id: 'v11', x: 860, y: 360 },
+    { id: 'v12', x: 940, y: 360 },
+    { id: 'v13', x: 60,  y: 260 },
+    { id: 'v14', x: 460, y: 260 },
+    { id: 'v15', x: 700, y: 460 },
+    { id: 'v16', x: 780, y: 460 },
+    { id: 'v17', x: 940, y: 460 },
+    { id: 'v18', x: 880, y: 560 },
+    { id: 'v19', x: 1000, y: 560 },
+  ];
+  edges = [
+    ['v1','v2'], ['v2','v3'], ['v3','v4'], ['v4','v5'],
+    ['v5','v6'], ['v6','v7'], ['v7','v8'], ['v8','v9'],
+    ['v9','v10'], ['v10','v11'], ['v11','v12'],
+    ['v1','v13'], ['v6','v14'], ['v9','v15'],
+    ['v10','v16'], ['v12','v17'], ['v17','v18'], ['v17','v19'],
+  ];
+  adj = {};
+  nodes.forEach(n => adj[n.id] = []);
+  edges.forEach(([u,v]) => { adj[u].push(v); adj[v].push(u); });
+  nodeMap = {};
+  nodes.forEach(n => nodeMap[n.id] = n);
+}
+
+// ============================================================
+// RAKE OPERATION (Algorithm 2)
+// ============================================================
+function rakeOperation(forestSet) {
+  const removed = new Set();
+  const deg = {};
+  forestSet.forEach(id => {
+    let d = 0;
+    for (const nb of adj[id]) if (forestSet.has(nb)) d++;
+    deg[id] = d;
+  });
+  forestSet.forEach(id => { if (deg[id] === 0) removed.add(id); });
+  forestSet.forEach(id => {
+    if (deg[id] === 1) {
+      const nbr = adj[id].find(nb => forestSet.has(nb));
+      if (!nbr) return;
+      if (deg[nbr] >= 2 || id > nbr) removed.add(id);
+    }
+  });
+  return removed;
+}
+
+// ============================================================
+// FIND MAXIMAL DEGREE-2 PATHS
+// ============================================================
+function findDegree2Paths(forestSet) {
+  const deg = {};
+  forestSet.forEach(id => {
+    let d = 0;
+    for (const nb of adj[id]) if (forestSet.has(nb)) d++;
+    deg[id] = d;
+  });
+  const deg2 = new Set();
+  forestSet.forEach(id => { if (deg[id] === 2) deg2.add(id); });
+
+  const visited = new Set();
+  const paths = [];
+  for (const start of deg2) {
+    if (visited.has(start)) continue;
+    // Find an endpoint: node with ≤1 deg-2 neighbor
+    let endpoint = start;
+    const seen = new Set([start]);
+    const queue = [start];
+    while (queue.length) {
+      const cur = queue.shift();
+      const nbrs2 = adj[cur].filter(nb => deg2.has(nb));
+      if (nbrs2.length <= 1) { endpoint = cur; break; }
+      for (const nb of nbrs2) {
+        if (!seen.has(nb)) { seen.add(nb); queue.push(nb); }
+      }
+    }
+    // Walk from endpoint to the other end
+    const path = [endpoint];
+    visited.add(endpoint);
+    let curr = endpoint, prev = null;
+    while (true) {
+      const nbrs2 = adj[curr].filter(nb => deg2.has(nb) && nb !== prev);
+      if (nbrs2.length === 0) break;
+      const next = nbrs2[0];
+      if (visited.has(next)) break;
+      path.push(next);
+      visited.add(next);
+      prev = curr;
+      curr = next;
+    }
+    if (path.length >= 3) paths.push(path);
+  }
+  return paths;
+}
+
+// ============================================================
+// TRACE COMPRESS — returns array of sub-steps
+// ============================================================
+function traceCompress(forestSet, ell) {
+  const subSteps = [];
+  const paths = findDegree2Paths(forestSet);
+
+  let pathCounter = 0;
+  for (const path of paths) {
+    pathCounter++;
+    const k = path.length;
+
+    if (k - 2 < ell) {
+      subSteps.push({
+        path: [...path], pathId: pathCounter, k, ell,
+        sIdx: null, qIdx: null, removedThisIter: [],
+        note: 'skip',
+        message: `Path P${pathCounter} (k=${k}): k−2 = ${k-2} < ℓ = ${ell} → skip.`
+      });
+      continue;
+    }
+
+    let sIdx = 0;
+    subSteps.push({
+      path: [...path], pathId: pathCounter, k, ell,
+      sIdx, qIdx: null, removedThisIter: [],
+      note: 'init',
+      message: `Path P${pathCounter} (k=${k}): k−2 = ${k-2} ≥ ℓ = ${ell}. Initialize s ← v₁ (${path[0]}).`
+    });
+
+    while ((k - 1) - sIdx - 1 >= ell) {
+      const remainingInternal = (k - 1) - sIdx - 1;
+      let qIdx, branch;
+      if (remainingInternal <= 2 * ell) {
+        qIdx = k - 1;
+        branch = `k−s−1 = ${remainingInternal} ≤ 2ℓ = ${2*ell} → q ← v_k (${path[k-1]})`;
+      } else {
+        qIdx = sIdx + 2 * ell + 1;
+        branch = `k−s−1 = ${remainingInternal} > 2ℓ = ${2*ell} → q ← v_{s+2ℓ+1} (${path[qIdx]})`;
+      }
+      const removedThisIter = [];
+      for (let j = sIdx + 1; j < qIdx; j++) removedThisIter.push(path[j]);
+      subSteps.push({
+        path: [...path], pathId: pathCounter, k, ell,
+        sIdx, qIdx, removedThisIter: [...removedThisIter],
+        note: 'iter',
+        message: `  s = ${path[sIdx]} (idx ${sIdx}), ${branch}. Remove {${removedThisIter.join(', ')}}.`
+      });
+      sIdx = qIdx;
+    }
+
+    subSteps.push({
+      path: [...path], pathId: pathCounter, k, ell,
+      sIdx, qIdx: null, removedThisIter: [],
+      note: 'done',
+      message: `Path P${pathCounter} done. Final s = ${path[sIdx]} (idx ${sIdx}); no more iterations.`
+    });
+  }
+  return subSteps;
+}
+
+// ============================================================
+// GENERATE STEPS
+// ============================================================
+function generateSteps() {
+  const allSteps = [];
+  let forest = new Set(nodes.map(n => n.id));
+  let phase = 0;
+
+  while (forest.size > 0) {
+    phase++;
+
+    // --- RAKE STEP ---
+    let rakeForest = new Set(forest);
+    for (let t = 1; t <= GAMMA; t++) {
+      const removed = rakeOperation(rakeForest);
+      removed.forEach(id => rakeForest.delete(id));
+      allSteps.push({
+        type: 'rake', phase, subStep: t, gamma: GAMMA,
+        removed: new Set(removed), trace: null, pointerInfo: null,
+        forestSnapshot: new Set(rakeForest),
+      });
+      if (rakeForest.size === 0) break;
+    }
+    forest = new Set(rakeForest);
+    if (forest.size === 0) break;
+
+    // --- COMPRESS STEP (traced) ---
+    const trace = traceCompress(forest, ELL);
+
+    if (trace.length > 0) {
+      allSteps.push({
+        type: 'compress-begin', phase, subStep: 0,
+        removed: new Set(), trace: null, pointerInfo: null,
+        forestSnapshot: new Set(forest), allTrace: trace,
+      });
+    }
+
+    const accumulatedRemoved = new Set();
+    for (let ti = 0; ti < trace.length; ti++) {
+      const sub = trace[ti];
+      sub.removedThisIter.forEach(id => accumulatedRemoved.add(id));
+      allSteps.push({
+        type: 'compress-trace', phase, subStep: ti + 1,
+        removed: new Set(sub.removedThisIter),
+        accumulatedRemoved: new Set(accumulatedRemoved),
+        trace: sub,
+        pointerInfo: (sub.note === 'iter') ? { s: sub.sIdx, q: sub.qIdx, path: sub.path } : null,
+        forestSnapshot: new Set(forest),
+        allTrace: trace, traceIndex: ti,
+      });
+    }
+
+    accumulatedRemoved.forEach(id => forest.delete(id));
+
+    allSteps.push({
+      type: 'compress-end', phase, subStep: 0,
+      removed: new Set(accumulatedRemoved),
+      trace: null, pointerInfo: null,
+      forestSnapshot: new Set(forest),
+    });
+
+    if (forest.size === 0) break;
+  }
+
+  allSteps.push({ type: 'done', phase, subStep: 0, removed: new Set(), trace: null, pointerInfo: null });
+  return allSteps;
+}
+
+// ============================================================
+// APPLY A STEP — rebuild forest + assignments + final layer map
+// ============================================================
+function applyStep(index) {
+  if (index < 0 || index >= steps.length) return;
+
+  // Replay from start to build forest, layerAssignments, and layerMap
+  let forest = new Set(nodes.map(n => n.id));
+  let assignments = [];
+  let accumulatedCompress = new Set();
+
+  // layerMap: nodeId -> layer index (0-based order of creation)
+  const layerMap = {};
+  let layerCounter = 0;
+
+  for (let i = 0; i <= index; i++) {
+    const s = steps[i];
+    if (s.type === 'rake') {
+      s.removed.forEach(id => {
+        forest.delete(id);
+        if (!(id in layerMap)) layerMap[id] = layerCounter;
+      });
+      if (s.removed.size > 0) {
+        assignments.push({
+          type: 'rake', phase: s.phase, subStep: s.subStep,
+          nodes: Array.from(s.removed).sort(),
+          color: LAYER_PALETTE[layerCounter % LAYER_PALETTE.length],
+        });
+        layerCounter++;
+      }
+    } else if (s.type === 'compress-trace') {
+      s.removed.forEach(id => {
+        forest.delete(id);
+        accumulatedCompress.add(id);
+        if (!(id in layerMap)) layerMap[id] = layerCounter;
+      });
+    } else if (s.type === 'compress-end') {
+      if (s.removed.size > 0) {
+        assignments.push({
+          type: 'compress', phase: s.phase, subStep: 0,
+          nodes: Array.from(s.removed).sort(),
+          color: LAYER_PALETTE[layerCounter % LAYER_PALETTE.length],
+        });
+        layerCounter++;
+      }
+      accumulatedCompress = new Set();
+    }
+  }
+
+  currentForest = forest;
+  layerAssignments = assignments;
+  window._layerMap = layerMap;
+}
+
+// ============================================================
+// RENDER TREE
+// ============================================================
+function renderTree(step) {
+  const svg = document.getElementById('treeSvg');
+  svg.innerHTML = '';
+
+  const isDone = !step || step.type === 'done';
+
+  if (isDone) {
+    renderFinalLayers(svg);
+    return;
+  }
+
+  // Determine which nodes are present for edge drawing
+  let baseForest = new Set(currentForest);
+  if (step.forestSnapshot) {
+    baseForest = new Set(step.forestSnapshot);
+    if (step.removed) step.removed.forEach(id => baseForest.add(id));
+    if (step.accumulatedRemoved) step.accumulatedRemoved.forEach(id => baseForest.add(id));
+  }
+
+  // Draw edges
+  edges.forEach(([u, v]) => {
+    if (baseForest.has(u) && baseForest.has(v)) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', nodeMap[u].x);
+      line.setAttribute('y1', nodeMap[u].y);
+      line.setAttribute('x2', nodeMap[v].x);
+      line.setAttribute('y2', nodeMap[v].y);
+      line.setAttribute('stroke', '#b0c4de');
+      line.setAttribute('stroke-width', '3');
+      line.setAttribute('stroke-linecap', 'round');
+      svg.appendChild(line);
+    }
+  });
+
+  // Pointer positions
+  let sNodeId = null, qNodeId = null;
+  if (step.pointerInfo) {
+    const { s, q, path } = step.pointerInfo;
+    if (s !== null && s !== undefined) sNodeId = path[s];
+    if (q !== null && q !== undefined) qNodeId = path[q];
+  }
+  const removedThisIter = step.removed || new Set();
+
+  // Draw nodes
+  nodes.forEach(n => {
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', n.x);
+    circle.setAttribute('cy', n.y);
+    circle.setAttribute('r', 16);
+
+    let fill = '#ffffff', stroke = '#8a9bb0', sw = 2;
+
+    const isInForest = baseForest.has(n.id);
+    const isRemovedThisStep = removedThisIter.has(n.id);
+    const isRemovedAccum = step.accumulatedRemoved && step.accumulatedRemoved.has(n.id);
+    const isS = (n.id === sNodeId);
+    const isQ = (n.id === qNodeId);
+
+    if (isS) {
+      fill = '#fca5a5'; stroke = '#b91c1c'; sw = 3;
+    } else if (isQ) {
+      fill = '#c4b5fd'; stroke = '#6d28d9'; sw = 3;
+    } else if (isRemovedThisStep) {
+      fill = '#a5f3fc'; stroke = '#0284c7'; sw = 3;
+    } else if (isRemovedAccum) {
+      fill = '#38bdf8'; stroke = '#0284c7'; sw = 2;
+    } else if (isInForest && currentForest.has(n.id)) {
+      fill = '#eef6ff'; stroke = '#3b82f6'; sw = 3;
+    } else if (isInForest) {
+      fill = '#e2e8f0'; stroke = '#94a3b8'; sw = 2;
+    } else {
+      // Removed in previous steps
+      if (step.type === 'rake' && step.removed && step.removed.has(n.id)) {
+        fill = '#fbbf24'; stroke = '#d97706'; sw = 3;
+      } else {
+        fill = '#e2e8f0'; stroke = '#94a3b8'; sw = 2;
+      }
+    }
+
+    circle.setAttribute('fill', fill);
+    circle.setAttribute('stroke', stroke);
+    circle.setAttribute('stroke-width', sw);
+    svg.appendChild(circle);
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', n.x);
+    text.setAttribute('y', n.y + 4);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('class', 'node-label');
+    text.textContent = n.id;
+    svg.appendChild(text);
+
+    if (isS) {
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', n.x);
+      lbl.setAttribute('y', n.y - 24);
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.setAttribute('class', 'ptr-label');
+      lbl.setAttribute('fill', '#b91c1c');
+      lbl.textContent = 's';
+      svg.appendChild(lbl);
+    }
+    if (isQ) {
+      const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      lbl.setAttribute('x', n.x);
+      lbl.setAttribute('y', n.y - 24);
+      lbl.setAttribute('text-anchor', 'middle');
+      lbl.setAttribute('class', 'ptr-label');
+      lbl.setAttribute('fill', '#6d28d9');
+      lbl.textContent = 'q';
+      svg.appendChild(lbl);
+    }
+  });
+}
+
+// ============================================================
+// RENDER FINAL LAYER VIEW — every node colored by its layer
+// ============================================================
+function renderFinalLayers(svg) {
+  const layerMap = window._layerMap || {};
+
+  // Draw edges (all edges, since all nodes are present in the final view)
+  edges.forEach(([u, v]) => {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', nodeMap[u].x);
+    line.setAttribute('y1', nodeMap[u].y);
+    line.setAttribute('x2', nodeMap[v].x);
+    line.setAttribute('y2', nodeMap[v].y);
+    line.setAttribute('stroke', '#cbd5e1');
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(line);
+  });
+
+  // Draw nodes with layer colors
+  nodes.forEach(n => {
+    const layerIdx = layerMap[n.id];
+    const color = (layerIdx !== undefined)
+      ? LAYER_PALETTE[layerIdx % LAYER_PALETTE.length]
+      : '#94a3b8';
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', n.x);
+    circle.setAttribute('cy', n.y);
+    circle.setAttribute('r', 18);
+    circle.setAttribute('fill', color);
+    circle.setAttribute('stroke', '#ffffff');
+    circle.setAttribute('stroke-width', 3);
+    svg.appendChild(circle);
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', n.x);
+    text.setAttribute('y', n.y + 4);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('class', 'node-label');
+    text.setAttribute('fill', '#ffffff');
+    text.textContent = n.id;
+    svg.appendChild(text);
+  });
+}
+
+// ============================================================
+// UPDATE STATUS PANEL
+// ============================================================
+function updateStatus(step, index) {
+  const stepBadge = document.getElementById('stepBadge');
+  const roundDisplay = document.getElementById('roundDisplay');
+  const phaseDisplay = document.getElementById('phaseDisplay');
+  const layerList = document.getElementById('layerList');
+  const traceBox = document.getElementById('traceBox');
+  const finalBanner = document.getElementById('finalBanner');
+  const legendBox = document.getElementById('legendBox');
+
+  const isDone = !step || step.type === 'done';
+
+  if (isDone) {
+    stepBadge.textContent = '✓ done';
+    stepBadge.className = 'step-badge done';
+    finalBanner.style.display = 'block';
+    // Show layer legend
+    legendBox.innerHTML = layerAssignments.map((layer) => {
+      return `<span><span class="legend-dot" style="background:${layer.color};"></span>${layer.type === 'rake' ? 'R' : 'C'}${layer.phase}</span>`;
+    }).join('') || '<span>no layers</span>';
+  } else {
+    finalBanner.style.display = 'none';
+    if (step.type === 'rake') {
+      stepBadge.textContent = `RAKE  (γ op ${step.subStep}/${step.gamma})`;
+      stepBadge.className = 'step-badge rake';
+    } else if (step.type === 'compress-begin') {
+      stepBadge.textContent = `COMPRESS  begin  (ℓ=${ELL})`;
+      stepBadge.className = 'step-badge compress';
+    } else if (step.type === 'compress-trace') {
+      stepBadge.textContent = `COMPRESS  trace ${step.subStep}`;
+      stepBadge.className = 'step-badge compress';
+    } else if (step.type === 'compress-end') {
+      stepBadge.textContent = `COMPRESS  done  (ℓ=${ELL})`;
+      stepBadge.className = 'step-badge compress';
+    }
+  }
+
+  roundDisplay.textContent = index + 1;
+
+  if (step && step.phase && step.type !== 'done') {
+    phaseDisplay.textContent = `phase ${step.phase} · ${step.type}`;
+  } else {
+    phaseDisplay.textContent = '—';
+  }
+
+  // Layer list
+  if (layerAssignments.length === 0) {
+    layerList.innerHTML = `<div class="layer-entry" style="color:#8a9bb0; justify-content:center;">no layers yet</div>`;
+  } else {
+    layerList.innerHTML = layerAssignments.map((layer) => {
+      const typeLabel = layer.type === 'rake'
+        ? `R${layer.phase}.${layer.subStep}`
+        : `C${layer.phase}`;
+      return `<div class="layer-entry">
+        <span class="layer-name" style="color:${layer.color};">${typeLabel}</span>
+        <span class="layer-nodes">${layer.nodes.join(' ')}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Trace box
+  if (isDone) {
+    traceBox.innerHTML = `✓ All layers assigned. ${layerAssignments.length} layers total.`;
+  } else if (step.trace && step.trace.message) {
+    let msg = step.trace.message;
+    msg = msg.replace(/\bs\b/g, '<span class="var-s">s</span>');
+    msg = msg.replace(/\bq\b/g, '<span class="var-q">q</span>');
+    traceBox.innerHTML = msg;
+  } else if (step.type === 'compress-begin') {
+    traceBox.innerHTML = `Starting compress. ℓ = ${ELL}. Finding maximal degree-2 paths…`;
+  } else if (step.type === 'compress-end') {
+    traceBox.innerHTML = `Compress layer complete. Removed: {${Array.from(step.removed).sort().join(', ')}}`;
+  } else if (step.type === 'rake') {
+    traceBox.innerHTML = `Rake op ${step.subStep}/${step.gamma}: removed {${Array.from(step.removed).sort().join(', ')}}`;
+  } else {
+    traceBox.innerHTML = `—`;
+  }
+}
+
+// ============================================================
+// UI CONTROLS
+// ============================================================
+function speedToDelay(s) {
+  const minDelay = 30, maxDelay = 5000;
+  const t = (s - 1) / 29;
+  return Math.round(maxDelay * Math.pow(minDelay / maxDelay, t));
+}
+
+function startPlay() {
+  if (timer) clearInterval(timer);
+  if (stepIndex >= steps.length - 1) {
+    stepIndex = 0;
+    applyStep(0);
+  }
+  playing = true;
+  document.getElementById('playBtn').textContent = '▶ playing';
+  const delay = speedToDelay(speed);
+  timer = setInterval(() => {
+    if (stepIndex < steps.length - 1) {
+      stepIndex++;
+      applyStep(stepIndex);
+      const step = steps[stepIndex];
+      renderTree(step);
+      updateStatus(step, stepIndex);
+    } else {
+      stopPlay();
+    }
+  }, delay);
+}
+
+function stopPlay() {
+  playing = false;
+  document.getElementById('playBtn').textContent = '▶ play';
+  if (timer) { clearInterval(timer); timer = null; }
+}
+
+function resetSim() {
+  stopPlay();
+  currentForest = new Set(nodes.map(n => n.id));
+  layerAssignments = [];
+  steps = generateSteps();
+  stepIndex = 0;
+  applyStep(0);
+  const step = steps[0];
+  renderTree(step);
+  updateStatus(step, 0);
+}
+
+// ============================================================
+// INITIALIZE
+// ============================================================
+function init() {
+  buildTree();
+  steps = generateSteps();
+  stepIndex = 0;
+  applyStep(0);
+
+  document.getElementById('playBtn').addEventListener('click', () => {
+    playing ? stopPlay() : startPlay();
+  });
+  document.getElementById('pauseBtn').addEventListener('click', () => {
+    if (playing) stopPlay();
+  });
+  document.getElementById('resetBtn').addEventListener('click', resetSim);
+  document.getElementById('speedSlider').addEventListener('input', (e) => {
+    speed = parseInt(e.target.value, 10);
+    document.getElementById('speedValue').textContent = speed + 'x';
+    if (playing) { stopPlay(); startPlay(); }
+  });
+  document.getElementById('speedValue').textContent = speed + 'x';
+
+  const step = steps[0];
+  renderTree(step);
+  updateStatus(step, 0);
+}
+
+init();
+</script>
+</body>
+</html>

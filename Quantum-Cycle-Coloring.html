@@ -1,0 +1,726 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Quantum Ring Coloring</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: ring stage with step rail on the left, tabbed explainer on the right; stacks below 980px. */
+:root{
+  --bg:#f2f5f8; --surface:#ffffff; --surface2:#e8edf2; --fg:#122030; --muted:#566879;
+  --line:#d3dce4; --line2:#a9b7c4;
+  --a:#087a71; --b:#a35f00; --ent:#6a4cd6; --good:#1c8548; --bad:#c2352d;
+  --sw-s:70%; --sw-l:80%;
+  --sans:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d141b; --surface:#141d26; --surface2:#1c2733; --fg:#e6edf3; --muted:#93a4b4;
+    --line:#2a3846; --line2:#4a5d6f;
+    --a:#46d1c4; --b:#f3b24c; --ent:#a794ff; --good:#52cf8a; --bad:#ff7a70;
+    --sw-s:45%; --sw-l:34%; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d141b; --surface:#141d26; --surface2:#1c2733; --fg:#e6edf3; --muted:#93a4b4;
+  --line:#2a3846; --line2:#4a5d6f;
+  --a:#46d1c4; --b:#f3b24c; --ent:#a794ff; --good:#52cf8a; --bad:#ff7a70;
+  --sw-s:45%; --sw-l:34%; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--sans); font-size:15px; line-height:1.55;
+  padding-block:20px 40px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2,h3{font-family:var(--sans);font-weight:600;text-wrap:balance;margin:0}
+h1{font-size:clamp(22px,3.4vw,30px);line-height:1.2;letter-spacing:-0.01em}
+h2{font-size:19px;line-height:1.3}
+h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500}
+p{margin:0}
+.eyebrow{font:500 12px var(--mono);color:var(--muted);letter-spacing:.02em}
+header{display:flex;flex-direction:column;gap:6px;max-width:78ch}
+header p{color:var(--muted)}
+.main{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:980px){.main{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;min-width:0}
+.stage{padding:14px;display:flex;flex-direction:column;gap:12px}
+.rail{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.rail button{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:7px 8px;border-radius:7px;
+  border:1px solid var(--line);background:var(--bg);color:var(--muted);font:500 12px var(--sans);cursor:pointer;text-align:left;min-width:0
+}
+.rail button .idx{font:500 11px var(--mono)}
+.rail button[aria-current="step"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.rail button.done{color:var(--fg)}
+@media (max-width:560px){.rail button span.lab{display:none}.rail button{align-items:center}}
+svg#stage{width:100%;max-width:640px;height:auto;margin:0 auto;display:block}
+.controls{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
+.btn{
+  font:500 13px var(--sans);padding:7px 12px;border-radius:7px;border:1px solid var(--line2);
+  background:var(--surface);color:var(--fg);cursor:pointer
+}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.primary{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.btn:focus-visible,.rail button:focus-visible,.tabs button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--ent);outline-offset:2px}
+.ctl{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.ctl output{font:500 13px var(--mono);color:var(--fg);min-width:2ch}
+input[type=range]{accent-color:var(--ent);width:120px}
+.spacer{flex:1 1 0}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:11px;height:11px;border-radius:50%;display:inline-block}
+.sw.a{background:var(--a)} .sw.b{background:var(--b)}
+.sw.e{width:18px;height:0;border-top:2px dashed var(--ent);border-radius:0}
+.hint{font-size:13px;color:var(--muted)}
+
+/* SVG parts */
+.edge{stroke:var(--line2);stroke-width:2;fill:none}
+.edgeo{stroke-width:3.5;fill:none;opacity:0}
+.mk{fill:var(--line2)} .mkg{fill:var(--good)} .mkr{fill:var(--bad)}
+.nc{fill:var(--surface);stroke:var(--line2);stroke-width:2}
+.node{cursor:pointer;outline:none}
+.node:focus-visible .nc{stroke:var(--ent);stroke-width:3}
+.swatch{fill:hsl(var(--h,200) var(--sw-s) var(--sw-l));opacity:0}
+.cl{font-family:var(--mono);font-weight:500;fill:var(--fg);text-anchor:middle;dominant-baseline:central;opacity:0;pointer-events:none}
+.ix{font-family:var(--mono);font-size:12px;fill:var(--muted);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.selring{fill:none;stroke:var(--fg);stroke-width:1.5;stroke-dasharray:3 3}
+.dotA{fill:var(--a)} .dotB{fill:var(--b)}
+.ent{stroke:var(--ent);stroke-width:2;stroke-dasharray:5 4;animation:dash 1s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-9}}
+.cap{stroke:var(--fg);stroke-linecap:round;fill:none}
+.dl{font:500 11px var(--mono);text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round;pointer-events:none}
+.dl.la{fill:var(--a)} .dl.lb{fill:var(--b)}
+.mark circle{fill:var(--surface);stroke-width:2}
+.mark path{fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.mark.ok circle,.mark.ok path{stroke:var(--good)}
+.mark.no circle,.mark.no path{stroke:var(--bad)}
+@media (prefers-reduced-motion:reduce){.ent{animation:none}}
+
+/* Side panel */
+.side{display:flex;flex-direction:column;min-width:0}
+.tabs{display:flex;flex-wrap:wrap;gap:2px;padding:8px 8px 0;border-bottom:1px solid var(--line)}
+.tabs button{
+  font:500 13px var(--sans);padding:8px 11px;border:0;background:none;color:var(--muted);cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-1px
+}
+.tabs button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--fg)}
+.pane{padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.pane[hidden]{display:none}
+.kicker{font:500 12px var(--mono);color:var(--muted)}
+.eq{
+  font:400 13px/1.6 var(--mono);background:var(--bg);border:1px solid var(--line);border-radius:7px;
+  padding:9px 11px;overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere
+}
+.note{font-size:13px;border-left:3px solid var(--line2);padding:2px 0 2px 10px;color:var(--muted)}
+.note b{color:var(--fg);font-weight:600}
+.ledger{margin:0;display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.ledger div{display:grid;grid-template-columns:minmax(90px,.45fr) minmax(0,1fr);gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.ledger dt{color:var(--muted);font-size:13px}
+.ledger dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.mono{font-family:var(--mono)}
+sub,sup{line-height:0;font-size:.75em}
+ol.build{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:9px}
+ol.build li::marker{font:500 12px var(--mono);color:var(--muted)}
+.calc{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.calc .row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.calc label{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+select{font:500 13px var(--mono);background:var(--surface);color:var(--fg);border:1px solid var(--line2);border-radius:6px;padding:5px 8px}
+.res{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:14px}
+.res span:nth-child(even){font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;font:500 11px var(--mono);padding:1px 7px;border-radius:99px;border:1px solid currentColor}
+.pill.ok{color:var(--good)} .pill.no{color:var(--bad)}
+.flow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:8px;align-items:stretch;font-size:13px}
+.flow div.box{border:1px solid var(--line2);border-radius:7px;padding:8px 10px;background:var(--bg)}
+.flow div.box b{display:block;font-weight:600}
+.flow .arrow{align-self:center;color:var(--muted);font-family:var(--mono)}
+table.cmp{border-collapse:collapse;width:100%;font-size:13px}
+table.cmp th,table.cmp td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+table.cmp th{font-weight:500;color:var(--muted)}
+.tblwrap{overflow-x:auto}
+footer{font-size:13px;color:var(--muted);max-width:90ch;display:flex;flex-direction:column;gap:6px}
+footer a{color:var(--fg)}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Flin, Li, Suomela · Quantum Advantage for Distributed Symmetry Breaking · Algorithm 1</div>
+    <h1>Coloring a ring in one round with entanglement</h1>
+    <p>Step through what every node does in the one-way, one-round quantum algorithm that colors a directed cycle with 20,000 colors. Click a node to follow its registers, and use the tabs for the math behind each stage.</p>
+  </header>
+
+  <div class="main">
+    <section class="card stage" aria-label="Ring simulation">
+      <div class="rail" id="rail"></div>
+      <svg id="stage" viewBox="-280 -280 560 560" role="img" aria-label="Directed ring of quantum nodes"></svg>
+      <div class="legend">
+        <span><i class="sw a"></i>A<sub>i</sub> kept by node i</span>
+        <span><i class="sw b"></i>B<sub>i</sub> sent to node i+1</span>
+        <span><i class="sw e"></i>entangled pair</span>
+      </div>
+      <div class="controls">
+        <button class="btn" id="back" type="button">Back</button>
+        <button class="btn primary" id="next" type="button">Next</button>
+        <button class="btn" id="play" type="button">Play</button>
+        <span class="spacer"></span>
+        <label class="ctl" for="nRange">Nodes <input id="nRange" type="range" min="4" max="12" value="6"><output id="nOut">6</output></label>
+      </div>
+      <div class="controls">
+        <button class="btn" id="resample" type="button">Resample outcomes</button>
+        <label class="ctl" for="force"><input id="force" type="checkbox"> Show a failed edge</label>
+      </div>
+      <p class="hint">Arrow keys also move between steps. Colors in step 5 are illustrative stand-ins, explained in the “This step” tab.</p>
+    </section>
+
+    <section class="card side" aria-label="Explanation">
+      <div class="tabs" role="tablist" id="tabs">
+        <button role="tab" id="tab-step" aria-controls="pane-step" aria-selected="true" type="button">This step</button>
+        <button role="tab" id="tab-why" aria-controls="pane-why" aria-selected="false" type="button">Why neighbors differ</button>
+        <button role="tab" id="tab-hood" aria-controls="pane-hood" aria-selected="false" type="button">Under the hood</button>
+        <button role="tab" id="tab-err" aria-controls="pane-err" aria-selected="false" type="button">Error and w.h.p.</button>
+      </div>
+
+      <div class="pane" id="pane-step" role="tabpanel" aria-labelledby="tab-step" aria-live="polite"></div>
+
+      <div class="pane" id="pane-why" role="tabpanel" aria-labelledby="tab-why" hidden></div>
+
+      <div class="pane" id="pane-hood" role="tabpanel" aria-labelledby="tab-hood" hidden>
+        <h2>Where the measurement comes from</h2>
+        <p>The quantum protocol is short. The work in the paper is choosing the POVM {M<sub>a</sub>}. The construction has four stages.</p>
+        <ol class="build">
+          <li><b>A 1-dependent coloring on an infinite space.</b> Take the group G = ⟨g<sub>1</sub>…g<sub>s</sub> | g<sub>i</sub>² = e⟩ with s = 10,000 involutions. A color is a signed generator ±g<sub>i</sub>, so q = 2s. Iterate V<sub>n+1</sub> = V<sub>n</sub> + (2/s)(E − S(V<sub>n</sub>)) from V<sub>0</sub> = 0. The error contracts by a factor λ each round.</li>
+          <li><b>Vectorize and take a square root.</b> Read V<sub>n</sub> as a polynomial in ℂ[G×G] and replace it by W², where W is a Taylor series of the square root. Every K<sub>a</sub>W²K<sub>a</sub> is then positive semidefinite.</li>
+          <li><b>Evaluate on finite matrices.</b> Send g<sub>i</sub> to U<sub>i</sub> = [[0, O<sub>i</sub><sup>T</sup>],[O<sub>i</sub>, 0]], where the O<sub>i</sub> are independent Haar-random orthogonal d×d matrices and N = 2d. Map [g,h] to U<sub>g</sub> ⊗ conj(U<sub>h</sub>). Each K<sub>a</sub> becomes a projector, so each operator has zero energy.</li>
+          <li><b>Normalize.</b> M<sub>a</sub> = T<sup>−1/2</sup> M̃<sub>a</sub> T<sup>−1/2</sup> with T = Σ<sub>a</sub> M̃<sub>a</sub>. For large N, T is close to the identity and the normalization adds only a little energy.</li>
+        </ol>
+
+        <h3>Why s = 10,000</h3>
+        <div class="calc">
+          <div class="row">
+            <label for="sRange">s <input id="sRange" type="range" min="1000" max="20000" step="100" value="10000"><output id="sOut" class="mono">10000</output></label>
+          </div>
+          <div class="res" id="sRes"></div>
+          <p class="hint">Both bounds are the paper’s sufficient conditions. However the constant can be further optimized.</p>
+        </div>
+
+        <h3>What a faithful simulation would cost</h3>
+        <div class="calc">
+          <div class="row">
+            <label for="epsSel">Edge failure ε
+              <select id="epsSel">
+                <option value="1e-3">10⁻³</option>
+                <option value="1e-6" selected>10⁻⁶</option>
+                <option value="1e-9">10⁻⁹</option>
+                <option value="1e-12">10⁻¹²</option>
+              </select>
+            </label>
+            <label for="nDim">N <input id="nDim" type="range" min="8" max="200" step="2" value="40"><output id="nDimOut" class="mono">40</output></label>
+          </div>
+          <div class="res" id="costRes"></div>
+          <p class="hint">Iteration count uses Lemma 5.10 with closeness √(ε/7) as in Theorem 5.3, using the s above. The paper gives no explicit N(ε), so N here is just a size to price out.</p>
+        </div>
+      </div>
+
+      <div class="pane" id="pane-err" role="tabpanel" aria-labelledby="tab-err" hidden>
+        <h2>What the guarantee means</h2>
+        <p>Each edge is monochromatic with probability at most ε, for any ε you choose. The register dimension N grows as ε shrinks. The round count (1) and the number of colors (20,000) stay fixed.</p>
+        <p>With nodes that know n, set ε = 1/n<sup>C+1</sup>. A union bound over the n edges gives all colors proper with probability at least 1 − 1/n<sup>C</sup>.</p>
+
+        <h3>Against picking colors at random</h3>
+        <div class="calc">
+          <div class="row">
+            <label for="ringSel">Ring size n
+              <select id="ringSel">
+                <option value="1e3">10³</option>
+                <option value="1e6" selected>10⁶</option>
+                <option value="1e9">10⁹</option>
+                <option value="1e12">10¹²</option>
+              </select>
+            </label>
+            <label for="cSel">C
+              <select id="cSel"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select>
+            </label>
+          </div>
+          <div class="res" id="errRes"></div>
+          <p class="hint">Baseline: every node outputs a uniformly random color out of 20,000 with no communication, so each edge conflicts with probability 1/20,000.</p>
+        </div>
+
+        <h3>From 20,000 colors to 3</h3>
+        <div class="flow">
+          <div class="box"><b>1 round, quantum</b>Algorithm 1 gives 20,000 colors, proper with high probability.</div>
+          <div class="arrow">→</div>
+          <div class="box"><b>3 rounds, classical</b>Standard color reduction takes 20,000 colors down to 3.</div>
+        </div>
+        <p class="note">Together this is the paper’s 4-round 3-coloring of directed cycles. For undirected cycles, identifiers orient each stretch between local extrema and two extra colors cover the extrema, giving 20,002 colors in one round.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <p>Source: Maxime Flin, Longcheng Li, Jukka Suomela, <a href="https://arxiv.org/pdf/2609.26788" target="_blank" rel="noopener">Quantum Advantage for Distributed Symmetry Breaking</a>, arXiv:2609.26788. The energy formula comes from Gur and Li as cited there.</p>
+    <p>What is simulated: the message flow, the register bookkeeping and the guarantees. What is not: the POVM itself, which acts on an N²-dimensional space for an N the paper never fixes. Outcomes shown are stand-ins drawn uniformly from the 20,000 colors, with adjacent repeats redrawn.</p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var Q = 20000, S = 10000;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function $(id) { return document.getElementById(id); }
+  function sub(x) { return '<sub>' + x + '</sub>'; }
+  function mod(i, n) { return ((i % n) + n) % n; }
+
+  var STEP_NAMES = ['Start', 'Prepare', 'Send', 'Combine', 'Measure', 'Check'];
+  var n = 6, step = 0, sel = 1, seed = 1, force = false, colors = [];
+  var playing = false, playTimer = 0;
+
+  /* ---------- outcomes (stand-in sampler) ---------- */
+  function rng(s) {
+    var a = s >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function sample() {
+    var r = rng(seed * 7919 + n), i, c;
+    colors = [];
+    for (i = 0; i < n; i++) {
+      do { c = Math.floor(r() * Q); }
+      while ((i > 0 && c === colors[i - 1]) || (i === n - 1 && c === colors[0]));
+      colors.push(c);
+    }
+    if (force) { var k = Math.floor(n / 2); colors[k] = colors[k - 1]; }
+  }
+  function cname(c) { return (c % 2 === 0 ? '+' : '−') + (Math.floor(c / 2) + 1); }
+  function cnum(c) { return Math.floor(c / 2) + 1; }
+  function hue(c) { return (c * 137.508) % 360; }
+
+  /* ---------- SVG ---------- */
+  var svg = $('stage'), R = 200, rN, dotR;
+  var P, T, IN, own, outS, inS;
+  var E = {}; // element refs
+  function nsEl(name, attrs, parent) {
+    var e = document.createElementNS('http://www.w3.org/2000/svg', name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+
+  function build() {
+    svg.innerHTML =
+      '<defs>' +
+      '<marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" class="mk"/></marker>' +
+      '<marker id="arrg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" class="mkg"/></marker>' +
+      '<marker id="arrr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" class="mkr"/></marker>' +
+      '</defs>';
+    var gEdges = nsEl('g', {}, svg), gEnt = nsEl('g', {}, svg), gCap = nsEl('g', {}, svg),
+        gNodes = nsEl('g', {}, svg), gDots = nsEl('g', {}, svg), gLbl = nsEl('g', {}, svg), gMarks = nsEl('g', {}, svg);
+
+    rN = Math.min(46, 2 * R * Math.sin(Math.PI / n) * 0.38);
+    dotR = Math.max(5.5, rN * 0.15);
+    P = []; T = []; IN = []; own = []; outS = []; inS = [];
+    var i;
+    for (i = 0; i < n; i++) {
+      var th = 2 * Math.PI * i / n, s = Math.sin(th), c = Math.cos(th);
+      P.push({ x: R * s, y: -R * c });
+      T.push({ x: c, y: s });
+      IN.push({ x: -s, y: c });
+      own.push({ x: P[i].x + IN[i].x * rN * 0.46, y: P[i].y + IN[i].y * rN * 0.46 });
+      outS.push({ x: P[i].x + T[i].x * rN * 0.55, y: P[i].y + T[i].y * rN * 0.55 });
+      inS.push({ x: P[i].x - T[i].x * rN * 0.55, y: P[i].y - T[i].y * rN * 0.55 });
+    }
+    E.edge = []; E.edgeo = []; E.mark = []; E.markPath = [];
+    E.ent = []; E.cap = []; E.nodeG = []; E.sw = []; E.cl = []; E.dotA = []; E.dotB = [];
+    E.mid = [];
+
+    E.selRing = nsEl('circle', { r: rN + 5, class: 'selring' }, gEdges);
+
+    for (i = 0; i < n; i++) {
+      var nx = (i + 1) % n, a = P[i], b = P[nx];
+      var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx * dx + dy * dy), ux = dx / len, uy = dy / len;
+      var x1 = a.x + ux * (rN + 3), y1 = a.y + uy * (rN + 3), x2 = b.x - ux * (rN + 9), y2 = b.y - uy * (rN + 9);
+      E.edge.push(nsEl('line', { x1: x1, y1: y1, x2: x2, y2: y2, class: 'edge', 'marker-end': 'url(#arr)' }, gEdges));
+      E.edgeo.push(nsEl('line', { x1: x1, y1: y1, x2: x2, y2: y2, class: 'edgeo' }, gEdges));
+      E.mid.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    }
+    for (i = 0; i < n; i++) {
+      E.ent.push(nsEl('line', { class: 'ent' }, gEnt));
+      E.cap.push(nsEl('line', { class: 'cap', 'stroke-width': dotR * 2.6, x1: inS[i].x, y1: inS[i].y, x2: own[i].x, y2: own[i].y }, gCap));
+    }
+    var fs = Math.max(10.5, rN * 0.3);
+    for (i = 0; i < n; i++) {
+      (function (k) {
+        var g = nsEl('g', { class: 'node', tabindex: '0', role: 'button', 'aria-label': 'Follow node ' + k }, gNodes);
+        nsEl('circle', { cx: P[k].x, cy: P[k].y, r: rN, class: 'nc' }, g);
+        E.sw.push(nsEl('circle', { cx: P[k].x, cy: P[k].y, r: rN - 2, class: 'swatch' }, g));
+        var t = nsEl('text', { x: P[k].x, y: P[k].y, class: 'cl', style: 'font-size:' + fs + 'px' }, g);
+        E.cl.push(t);
+        var ox = -IN[k].x, oy = -IN[k].y;
+        var ix = nsEl('text', { x: P[k].x + ox * (rN + 15), y: P[k].y + oy * (rN + 15), class: 'ix' }, gNodes);
+        ix.innerHTML = 'v<tspan dy="3" font-size="9">' + k + '</tspan>';
+        g.addEventListener('click', function () { select(k); });
+        g.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); select(k); }
+        });
+        E.nodeG.push(g);
+      })(i);
+    }
+    for (i = 0; i < n; i++) {
+      E.dotA.push(nsEl('circle', { r: dotR, class: 'dotA' }, gDots));
+      E.dotB.push(nsEl('circle', { r: dotR, class: 'dotB' }, gDots));
+    }
+    E.lA = nsEl('text', { class: 'dl la' }, gLbl);
+    E.lB = nsEl('text', { class: 'dl lb' }, gLbl);
+    E.lBp = nsEl('text', { class: 'dl lb' }, gLbl);
+    E.lA.innerHTML = 'A<tspan dy="3" font-size="8">i</tspan>';
+    E.lB.innerHTML = 'B<tspan dy="3" font-size="8">i</tspan>';
+    E.lBp.innerHTML = 'B<tspan dy="3" font-size="8">i−1</tspan>';
+
+    for (i = 0; i < n; i++) {
+      var m = nsEl('g', { class: 'mark ok' }, gMarks);
+      nsEl('circle', { r: 10 }, m);
+      E.markPath.push(nsEl('path', { d: 'M-4.5 0.5L-1.5 3.5L4.5 -3' }, m));
+      E.mark.push(m);
+    }
+    applyColors();
+  }
+
+  function applyColors() {
+    for (var i = 0; i < n; i++) {
+      var nx = (i + 1) % n, ok = colors[i] !== colors[nx];
+      E.sw[i].style.setProperty('--h', hue(colors[i]).toFixed(1));
+      E.cl[i].textContent = cname(colors[i]);
+      E.edgeo[i].setAttribute('stroke', ok ? 'var(--good)' : 'var(--bad)');
+      E.edgeo[i].setAttribute('marker-end', ok ? 'url(#arrg)' : 'url(#arrr)');
+      E.mark[i].setAttribute('class', 'mark ' + (ok ? 'ok' : 'no'));
+      E.markPath[i].setAttribute('d', ok ? 'M-4.5 0.5L-1.5 3.5L4.5 -3' : 'M-3.5 -3.5L3.5 3.5M3.5 -3.5L-3.5 3.5');
+    }
+  }
+
+  /* ---------- tween engine ---------- */
+  var ch = { reg: 0, send: 0, pair: 0, meas: 0, check: 0 };
+  var order = ['reg', 'send', 'pair', 'meas', 'check'];
+  var tw = {}, raf = 0;
+  function targets(s) {
+    return { reg: s >= 1 ? 1 : 0, send: s >= 2 ? 1 : 0, pair: s >= 3 ? 1 : 0, meas: s >= 4 ? 1 : 0, check: s >= 5 ? 1 : 0 };
+  }
+  function loop() { if (!raf) raf = requestAnimationFrame(tick); }
+  function tick(now) {
+    raf = 0;
+    var active = false, k, a, p, e;
+    for (k in tw) {
+      a = tw[k]; p = (now - a.t0) / a.dur;
+      if (p < 0) { active = true; continue; }
+      if (p >= 1) { ch[k] = a.to; delete tw[k]; }
+      else {
+        e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+        ch[k] = a.from + (a.to - a.from) * e; active = true;
+      }
+    }
+    render();
+    if (active) loop();
+  }
+  function go(s, fromUser) {
+    s = Math.max(0, Math.min(5, s));
+    if (fromUser) stopPlay();
+    var t = targets(s), fwd = s >= step, now = performance.now();
+    var changed = order.filter(function (k) { return Math.abs(ch[k] - t[k]) > 1e-6; });
+    if (!fwd) changed.reverse();
+    changed.forEach(function (k, idx) {
+      tw[k] = { from: ch[k], to: t[k], t0: now + (reduce ? 0 : idx * 260), dur: reduce ? 1 : 850 };
+    });
+    step = s;
+    updateUI();
+    loop();
+  }
+  function settle() {
+    var t = targets(step);
+    order.forEach(function (k) { ch[k] = t[k]; });
+    tw = {};
+    render();
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    var reg = ch.reg, send = ch.send, pair = ch.pair, meas = ch.meas, chk = ch.check, i;
+    var vis = reg * (1 - meas), bpos = [];
+    for (i = 0; i < n; i++) {
+      var nx = (i + 1) % n;
+      var bx = outS[i].x + (inS[nx].x - outS[i].x) * send, by = outS[i].y + (inS[nx].y - outS[i].y) * send;
+      bpos.push({ x: bx, y: by });
+      var rr = dotR * (0.35 + 0.65 * reg);
+      E.dotA[i].setAttribute('cx', own[i].x); E.dotA[i].setAttribute('cy', own[i].y);
+      E.dotA[i].setAttribute('r', rr); E.dotA[i].setAttribute('opacity', vis);
+      E.dotB[i].setAttribute('cx', bx); E.dotB[i].setAttribute('cy', by);
+      E.dotB[i].setAttribute('r', rr); E.dotB[i].setAttribute('opacity', vis);
+      E.ent[i].setAttribute('x1', own[i].x); E.ent[i].setAttribute('y1', own[i].y);
+      E.ent[i].setAttribute('x2', bx); E.ent[i].setAttribute('y2', by);
+      E.ent[i].setAttribute('opacity', vis * 0.95);
+      E.cap[i].setAttribute('opacity', pair * (1 - meas) * 0.16);
+      E.sw[i].style.opacity = meas;
+      E.cl[i].style.opacity = meas;
+      E.edgeo[i].style.opacity = chk;
+      E.mark[i].setAttribute('transform', 'translate(' + E.mid[i].x + ' ' + E.mid[i].y + ') scale(' + (0.2 + 0.8 * chk) + ')');
+      E.mark[i].setAttribute('opacity', chk);
+    }
+    var s0 = sel, p0 = mod(sel - 1, n);
+    var off = dotR + 11;
+    place(E.lA, own[s0].x + IN[s0].x * off, own[s0].y + IN[s0].y * off, vis);
+    place(E.lB, bpos[s0].x - IN[s0].x * off, bpos[s0].y - IN[s0].y * off, vis);
+    place(E.lBp, bpos[p0].x - IN[p0].x * off, bpos[p0].y - IN[p0].y * off, vis);
+    E.selRing.setAttribute('cx', P[s0].x); E.selRing.setAttribute('cy', P[s0].y);
+  }
+  function place(t, x, y, o) { t.setAttribute('x', x); t.setAttribute('y', y); t.setAttribute('opacity', o); }
+
+  /* ---------- panels ---------- */
+  function vn(i) { return 'v' + sub(mod(i, n)); }
+  var STEP_TEXT = [
+    function () {
+      return {
+        title: 'Identical nodes on a directed ring',
+        body: '<p>The ring has n computers running the same program. Each one knows only which neighbor is its predecessor and which is its successor. The network starts in a product state, so no node shares entanglement with any other.</p>',
+        eq: 'state = ⊗ᵢ |0⟩ᵢ     (no entanglement)',
+        look: 'The arrows give the one-way direction. Everything that follows uses a single round of communication along them.'
+      };
+    },
+    function () {
+      return {
+        title: 'Each node prepares an entangled pair',
+        body: '<p>Every node v' + sub('i') + ' creates two registers, A' + sub('i') + ' and B' + sub('i') + ', each of dimension N, in a maximally entangled state. This is local work and no message has been sent yet.</p><p>N is fixed in advance from the target error ε. A smaller ε needs a larger N.</p>',
+        eq: '|Φₙ⟩ = (1/√N) Σⱼ |j⟩ₐ ⊗ |j⟩ᵇ,   j = 1 … N',
+        look: 'A teal A and an amber B appear in each node, joined by a dashed violet link that marks the entanglement.'
+      };
+    },
+    function () {
+      return {
+        title: 'Send B' + sub('i') + ' to the successor',
+        body: '<p>This is the only communication round. Node v' + sub('i') + ' sends B' + sub('i') + ' to v' + sub('i+1') + ' and keeps A' + sub('i') + '. It also receives B' + sub('i−1') + ' from its predecessor. Nothing travels backwards.</p><p>The entanglement now crosses every edge: A' + sub('i') + ' sits at v' + sub('i') + ' and its partner B' + sub('i') + ' sits at v' + sub('i+1') + '.</p>',
+        eq: 'vᵢ:  send Bᵢ → vᵢ₊₁,   keep Aᵢ,   receive Bᵢ₋₁',
+        look: 'The amber registers slide along the arrows and the violet links stretch across the edges.'
+      };
+    },
+    function () {
+      return {
+        title: 'Each node holds halves of two different pairs',
+        body: '<p>After the round, v' + sub('i') + ' holds B' + sub('i−1') + ' and A' + sub('i') + '. They belong to different pairs, so they are not entangled with each other. B' + sub('i−1') + ' is entangled with A' + sub('i−1') + ' at the predecessor, and A' + sub('i') + ' is entangled with B' + sub('i') + ' at the successor.</p><p>Those two links are what correlate neighboring outcomes. Together the pair of registers spans a space of dimension N².</p>',
+        eq: '(Bᵢ₋₁, Aᵢ) ∈ ℂᴺ ⊗ ℂᴺ,   reduced state = I / N²',
+        look: 'The faint capsule in each node joins the two registers it will measure together.'
+      };
+    },
+    function () {
+      return {
+        title: 'Measure with a 20,000-outcome POVM',
+        body: '<p>Every node applies the same POVM {M' + sub('a') + '}, a = 1 … 20,000, to (B' + sub('i−1') + ', A' + sub('i') + ') and outputs the outcome as its color. The POVM is built so that, together with the shared pairs, adjacent nodes almost never get the same outcome.</p><p>The two registers are halves of different pairs, so their joint state is maximally mixed. A color a therefore appears with probability Tr(M' + sub('a') + ') / N².</p>',
+        eq: 'cᵢ = outcome of {Mₐ} on (Bᵢ₋₁, Aᵢ)\nΣₐ Mₐ = I,   Pr[cᵢ = a] = Tr(Mₐ) / N²',
+        note: '<b>Illustrative outcomes.</b> The real POVM acts on an N²-dimensional space and is not simulated. The colors shown are drawn uniformly from 20,000 values, with adjacent repeats redrawn. Use “Resample outcomes” for a fresh set.',
+        look: 'Each node collapses to one color. The registers are consumed, and the signed number is the color index.'
+      };
+    },
+    function () {
+      var fail = false, i;
+      for (i = 0; i < n; i++) if (colors[i] === colors[(i + 1) % n]) fail = true;
+      return {
+        title: 'Compare neighbors',
+        body: '<p>The algorithm finished with the measurement. This step is for the viewer: a ring is properly colored when every edge joins two different colors.</p><p>The paper guarantees that each edge fails with probability at most ε. Raising N drives ε down while the round count and the 20,000 colors stay the same.</p>',
+        eq: 'Pr[cᵢ = cᵢ₊₁] = (1/N³) Σₐ ℰ(Mₐ) ≤ ε',
+        note: fail ? '<b>Failed edge shown on purpose.</b> In the real algorithm this happens on any given edge with probability at most ε.' : '',
+        look: fail ? 'Green ticks mark proper edges and the red cross marks a monochromatic one.' : 'A green tick appears on every edge whose two ends differ.'
+      };
+    }
+  ];
+
+  function ledgerRows() {
+    var i = sel, p = mod(i - 1, n), s = mod(i + 1, n), r = [];
+    var c = colors[i];
+    r.push(['Registers',
+      step === 0 ? 'none' :
+      step === 1 ? 'A' + sub('i') + ' and B' + sub('i') :
+      step === 2 ? 'A' + sub('i') + ' kept; B' + sub('i') + ' in transit to ' + vn(s) :
+      step === 3 ? 'B' + sub('i−1') + ' (from ' + vn(p) + ') and A' + sub('i') :
+      step === 4 ? 'B' + sub('i−1') + ' and A' + sub('i') + ', consumed by the measurement' :
+      'none, the output is classical']);
+    r.push(['Joint state',
+      step === 0 ? 'product state' :
+      step === 1 ? '|Φ' + sub('N') + '⟩ on A' + sub('i') + ' ⊗ B' + sub('i') :
+      step === 2 ? 'A' + sub('i') + ' at ' + vn(i) + ' ↔ B' + sub('i') + ' at ' + vn(s) :
+      step === 3 ? 'maximally mixed on ℂ' + '<sup>N</sup>⊗ℂ<sup>N</sup>' :
+      step === 4 ? 'collapsed to one outcome' : 'classical bits only']);
+    r.push(['Dimension',
+      step === 0 ? '—' : step <= 2 ? 'N per register' : step === 3 ? 'N² to measure' :
+      step === 4 ? 'q = 20,000 outcomes' : '14.29 bits per color']);
+    if (step >= 4) r.push(['Color c' + sub(i), '<span class="mono">' + cname(c) + '</span> (index ' + (c + 1) + ' of 20,000)']);
+    if (step >= 5) {
+      r.push(['Edge ' + vn(p) + '→' + vn(i), '<span class="mono">' + cname(colors[p]) + ' vs ' + cname(c) + '</span> ' + (colors[p] !== c ? '<span class="pill ok">differ</span>' : '<span class="pill no">same</span>')]);
+      r.push(['Edge ' + vn(i) + '→' + vn(s), '<span class="mono">' + cname(c) + ' vs ' + cname(colors[s]) + '</span> ' + (c !== colors[s] ? '<span class="pill ok">differ</span>' : '<span class="pill no">same</span>')]);
+    }
+    return r;
+  }
+
+  function renderStepPane() {
+    var d = STEP_TEXT[step]();
+    var h = '<div class="kicker">Step ' + (step + 1) + ' of 6 · ' + STEP_NAMES[step] + '</div><h2>' + d.title + '</h2>' + d.body;
+    h += '<div class="eq">' + d.eq.replace(/</g, '&lt;') + '</div>';
+    if (d.note) h += '<p class="note">' + d.note + '</p>';
+    h += '<p class="hint"><b style="color:var(--fg);font-weight:500">Look for:</b> ' + d.look + '</p>';
+    h += '<h3>Following node ' + vn(sel) + '</h3><dl class="ledger">';
+    ledgerRows().forEach(function (row) { h += '<div><dt>' + row[0] + '</dt><dd>' + row[1] + '</dd></div>'; });
+    h += '</dl>';
+    $('pane-step').innerHTML = h;
+  }
+
+  function renderWhyPane() {
+    var i = sel, p = mod(i - 1, n), s = mod(i + 1, n), c = colors[i], cs = colors[s];
+    var j = cnum(c), plus = c % 2 === 0, sg = plus ? '+1' : '−1', og = plus ? '−1' : '+1';
+    var js = cnum(cs), pluss = cs % 2 === 0;
+    var h = '<h2>Why adjacent colors cannot match</h2>';
+    h += '<p>A color is a signed index ±j, with j from 1 to 10,000. Let U' + sub('j') + ' be the j-th matrix of the construction. It is real, symmetric and squares to the identity, so its eigenvalues are +1 and −1. The measurement operators are built to follow this rule:</p>';
+    h += '<dl class="ledger"><div><dt>Outcome +j</dt><dd>received half B in the +1 eigenspace of U' + sub('j') + ', own half A in the −1 eigenspace</dd></div>';
+    h += '<div><dt>Outcome −j</dt><dd>the same with the two eigenspaces swapped</dd></div></dl>';
+    h += '<h3>Node ' + vn(i) + ' in this run</h3>';
+    h += '<p>' + vn(i) + ' output <span class="mono">' + cname(c) + '</span>. Its received half B' + sub('i−1') + ' lies in the ' + sg + ' eigenspace of U' + sub(j) + ' and its own half A' + sub('i') + ' lies in the ' + og + ' eigenspace.</p>';
+    h += '<p>Its successor ' + vn(s) + ' holds B' + sub('i') + ', the entangled partner of A' + sub('i') + '. The two halves of a maximally entangled pair mirror each other, so B' + sub('i') + ' is pushed into the ' + og + ' eigenspace of U' + sub(j) + '. Outcome <span class="mono">' + cname(c) + '</span> would need the ' + sg + ' eigenspace, so ' + vn(s) + ' cannot output it. In the display above, ' + vn(s) + ' shows <span class="mono">' + cname(cs) + '</span>' + (c === cs ? ', which is the failed edge you asked to see.' : ', a different color.') + '</p>';
+    h += '<p class="note"><b>Precision.</b> This is exact for the unnormalized operators, which have zero energy. Normalizing them into a valid POVM adds a small amount of energy, and that is the ε in the failure probability. The reading of the zero-energy condition in terms of eigenspaces is a gloss on the paper’s construction, and the colors displayed are stand-ins.</p>';
+    h += '<p class="hint">Outcome −j for the successor stays allowed. It is a different color from +j.</p>';
+    $('pane-why').innerHTML = h;
+  }
+
+  function updateUI() {
+    var rail = $('rail').children, i;
+    for (i = 0; i < rail.length; i++) {
+      if (i === step) rail[i].setAttribute('aria-current', 'step'); else rail[i].removeAttribute('aria-current');
+      rail[i].classList.toggle('done', i < step);
+    }
+    $('back').disabled = step === 0;
+    $('next').disabled = step === 5;
+    $('play').textContent = playing ? 'Pause' : 'Play';
+    renderStepPane();
+    renderWhyPane();
+  }
+
+  /* ---------- controls ---------- */
+  function select(k) { sel = k; render(); renderStepPane(); renderWhyPane(); }
+  function stopPlay() { playing = false; clearInterval(playTimer); $('play').textContent = 'Play'; }
+  function startPlay() {
+    if (step === 5) go(0);
+    playing = true; $('play').textContent = 'Pause';
+    clearInterval(playTimer);
+    playTimer = setInterval(function () {
+      if (step >= 5) { stopPlay(); return; }
+      go(step + 1);
+    }, 2800);
+  }
+  function setN(v) {
+    n = v; $('nOut').textContent = v;
+    if (sel >= n) sel = 1;
+    sample(); build(); settle(); renderStepPane(); renderWhyPane();
+  }
+
+  (function initRail() {
+    var r = $('rail');
+    STEP_NAMES.forEach(function (nm, i) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = '<span class="idx">' + (i + 1) + '</span><span class="lab">' + nm + '</span>';
+      b.setAttribute('aria-label', 'Step ' + (i + 1) + ': ' + nm);
+      b.addEventListener('click', function () { go(i, true); });
+      r.appendChild(b);
+    });
+  })();
+  $('back').addEventListener('click', function () { go(step - 1, true); });
+  $('next').addEventListener('click', function () { go(step + 1, true); });
+  $('play').addEventListener('click', function () { if (playing) stopPlay(); else startPlay(); });
+  $('nRange').addEventListener('input', function (e) { setN(+e.target.value); });
+  $('resample').addEventListener('click', function () { seed++; sample(); applyColors(); render(); renderStepPane(); renderWhyPane(); });
+  $('force').addEventListener('change', function (e) { force = e.target.checked; sample(); applyColors(); render(); renderStepPane(); renderWhyPane(); });
+  document.addEventListener('keydown', function (e) {
+    var t = e.target && e.target.tagName;
+    if (t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA') return;
+    if (e.key === 'ArrowRight') { go(step + 1, true); }
+    else if (e.key === 'ArrowLeft') { go(step - 1, true); }
+  });
+
+  /* tabs */
+  var tabIds = ['step', 'why', 'hood', 'err'];
+  function showTab(id) {
+    tabIds.forEach(function (t) {
+      var on = t === id;
+      $('tab-' + t).setAttribute('aria-selected', on ? 'true' : 'false');
+      $('pane-' + t).hidden = !on;
+    });
+  }
+  tabIds.forEach(function (t) {
+    $('tab-' + t).addEventListener('click', function () { showTab(t); });
+    $('tab-' + t).addEventListener('keydown', function (e) {
+      var k = tabIds.indexOf(t), d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!d) return;
+      e.preventDefault(); e.stopPropagation();
+      var nt = tabIds[mod(k + d, tabIds.length)];
+      showTab(nt); $('tab-' + nt).focus();
+    });
+  });
+
+  /* ---------- calculators ---------- */
+  function sci(x) {
+    if (x === 0) return '0';
+    var e = Math.floor(Math.log10(Math.abs(x))), m = x / Math.pow(10, e);
+    if (m.toFixed(1) === '10.0') { m = 1; e++; }
+    return m.toFixed(1).replace(/\.0$/, '') + '×10<sup>' + e + '</sup>';
+  }
+  function pct(p) { return p > 0.9999 ? '≈ 100%' : (p * 100).toFixed(p < 0.1 ? 2 : 1) + '%'; }
+  function fmtBytes(b) {
+    var u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'], i = 0;
+    while (b >= 1000 && i < u.length - 1) { b /= 1000; i++; }
+    return b.toFixed(b < 10 ? 2 : b < 100 ? 1 : 0) + ' ' + u[i];
+  }
+  function lambdaOf(s) { return 0.75 + 24 / Math.sqrt(2 * s); }
+  function tayOf(s) { var r = Math.sqrt(2 * s); return r > 96 ? 8 * Math.SQRT2 / (r - 96) : Infinity; }
+
+  function calcS() {
+    var s = +$('sRange').value, lam = lambdaOf(s), tay = tayOf(s);
+    $('sOut').textContent = s;
+    var okL = lam < 1, okT = tay < 0.25;
+    $('sRes').innerHTML =
+      '<span>Colors q = 2s</span><span>' + (2 * s).toLocaleString('en-US') + '</span>' +
+      '<span>Contraction λ = 3/4 + 24/√(2s)</span><span>' + lam.toFixed(4) + ' <i class="pill ' + (okL ? 'ok' : 'no') + '">' + (okL ? '&lt; 1' : '≥ 1') + '</i></span>' +
+      '<span>Taylor bound 8√2 / (√(2s) − 96)</span><span>' + (isFinite(tay) ? tay.toFixed(4) : 'undefined') + ' <i class="pill ' + (okT ? 'ok' : 'no') + '">' + (okT ? '&lt; 1/4' : '≥ 1/4') + '</i></span>';
+    calcCost();
+  }
+  function calcCost() {
+    var s = +$('sRange').value, eps = +$('epsSel').value, N = +$('nDim').value;
+    $('nDimOut').textContent = N;
+    var lam = lambdaOf(s), delta = Math.sqrt(eps / 7), it;
+    if (lam < 1) it = Math.ceil(Math.log(delta / 2 / (2 * s + 1)) / Math.log(lam));
+    var one = 8 * Math.pow(N, 4), all = one * 2 * s;
+    $('costRes').innerHTML =
+      '<span>Iterations n of the V recurrence</span><span>' + (it ? it : 'bound does not apply') + '</span>' +
+      '<span>Word length reached (about 2n)</span><span>' + (it ? '≈ ' + 2 * it : '—') + '</span>' +
+      '<span>One dense N²×N² real matrix</span><span>' + fmtBytes(one) + '</span>' +
+      '<span>All 2s operators, dense</span><span>' + fmtBytes(all) + '</span>';
+  }
+  function calcErr() {
+    var nn = +$('ringSel').value, C = +$('cSel').value, q = Q;
+    var exp = nn / q, pr = -Math.expm1(-exp);
+    $('errRes').innerHTML =
+      '<span>Random colors: expected bad edges n/q</span><span>' + sci(exp) + '</span>' +
+      '<span>Random colors: P(some edge bad)</span><span>' + pct(pr) + '</span>' +
+      '<span>Quantum: edge error ε = n<sup>−(C+1)</sup></span><span>' + sci(Math.pow(nn, -(C + 1))) + '</span>' +
+      '<span>Quantum: P(some edge bad) ≤ n<sup>−C</sup></span><span>' + sci(Math.pow(nn, -C)) + '</span>' +
+      '<span>Rounds in both cases</span><span>1</span>';
+  }
+  $('sRange').addEventListener('input', calcS);
+  $('epsSel').addEventListener('change', calcCost);
+  $('nDim').addEventListener('input', calcCost);
+  $('ringSel').addEventListener('change', calcErr);
+  $('cSel').addEventListener('change', calcErr);
+
+  /* ---------- boot ---------- */
+  sample(); build(); settle(); updateUI(); calcS(); calcErr();
+})();
+</script>
+
+</body></html>
