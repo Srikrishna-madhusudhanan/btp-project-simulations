@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <meta name="description" content="Interactive project simulations: quantum ring coloring and rake-and-compress tree decomposition.">
+  <title>Project Simulations</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1220;
+      --surface: #121d2e;
+      --surface-hover: #18263a;
+      --text: #edf3fb;
+      --muted: #a7b5c8;
+      --line: #293950;
+      --accent: #75d6cb;
+      --accent2: #a995ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 48px 20px;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(ellipse at 12% 8%, rgba(117,214,203,.13), transparent 34rem),
+        radial-gradient(ellipse at 90% 85%, rgba(169,149,255,.13), transparent 32rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .page { width: min(100%, 980px); }
+    .eyebrow {
+      color: var(--accent);
+      font-size: .76rem;
+      font-weight: 700;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    header { margin-bottom: 34px; }
+    h1 {
+      margin: 12px 0 12px;
+      font-size: clamp(2.1rem, 6vw, 3.6rem);
+      line-height: 1.06;
+      letter-spacing: -.045em;
+    }
+    header p {
+      max-width: 650px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.7;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .card {
+      display: flex;
+      flex-direction: column;
+      min-height: 290px;
+      padding: 25px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: linear-gradient(155deg, rgba(255,255,255,.035), transparent 65%), var(--surface);
+      text-decoration: none;
+      color: inherit;
+      transition: transform .18s ease, border-color .18s ease, background .18s ease;
+    }
+    .card:hover, .card:focus-visible {
+      transform: translateY(-4px);
+      border-color: var(--accent);
+      background-color: var(--surface-hover);
+      outline: none;
+    }
+    .icon {
+      display: grid;
+      place-items: center;
+      width: 52px;
+      height: 52px;
+      margin-bottom: 24px;
+      border-radius: 15px;
+      background: rgba(117,214,203,.12);
+      color: var(--accent);
+      font-size: 1.6rem;
+    }
+    .card:nth-child(2) .icon {
+      background: rgba(169,149,255,.13);
+      color: var(--accent2);
+    }
+    .tag {
+      margin-bottom: 9px;
+      color: var(--muted);
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    h2 { margin: 0 0 10px; font-size: 1.35rem; letter-spacing: -.02em; }
+    .description { margin: 0 0 24px; color: var(--muted); line-height: 1.65; }
+    .open {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: auto;
+      color: var(--accent);
+      font-weight: 700;
+      font-size: .92rem;
+    }
+    .card:nth-child(2) .open { color: var(--accent2); }
+    footer {
+      margin-top: 30px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: .85rem;
+      line-height: 1.6;
+    }
+    @media (max-width: 680px) {
+      body { padding: 34px 16px; }
+      .cards { grid-template-columns: 1fr; }
+      .card { min-height: 250px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div class="eyebrow">Interactive project demonstrations</div>
+      <h1>Project Simulations</h1>
+      <p>Explore the two interactive simulations below. Select a topic to open its step-by-step visualization.</p>
+    </header>
+
+    <section class="cards" aria-label="Available simulations">
+      <a class="card" href="Quantum-Cycle-Coloring.html">
+        <div class="icon" aria-hidden="true">◉</div>
+        <div class="tag">Simulation 01 · Quantum algorithms</div>
+        <h2>Quantum Ring Coloring</h2>
+        <p class="description">Follow the one-round quantum ring-coloring procedure, step through the message and register flow, and explore the explanation panels.</p>
+        <span class="open">Open simulation <span aria-hidden="true">→</span></span>
+      </a>
+
+      <a class="card" href="rakeandcompress.html">
+        <div class="icon" aria-hidden="true">⌘</div>
+        <div class="tag">Simulation 02 · Tree decomposition</div>
+        <h2>Rake and Compress</h2>
+        <p class="description">Watch the rake and compress phases unfold, inspect the step-by-step trace, and see the resulting decomposition layers.</p>
+        <span class="open">Open simulation <span aria-hidden="true">→</span></span>
+      </a>
+    </section>
+
+    <footer>
+      These simulations run in your browser. For the links to work when hosted, keep this
+      <code>index.html</code> file and both simulation HTML files together in the same folder.
+    </footer>
+  </main>
+</body>
+</html>
